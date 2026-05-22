@@ -1,0 +1,7 @@
+node_modules/
+dist/
+# Korpus EUR-Lex - artefakt upstream (Ansvar, Apache-2.0). Pobierany skryptem,
+# nie trzymany w repo. Patrz scripts/fetch-corpus.mjs i THIRD_PARTY_INSPIRATIONS.md.
+data/regulations.db
+*.log
+.env
