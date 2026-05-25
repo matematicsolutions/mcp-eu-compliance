@@ -1,5 +1,15 @@
 # Changelog - mcp-eu-compliance
 
+## v0.2.0 - 2026-05-25
+
+Retrofit do kanonu MCP MateMatic (pattern z dograh-hq/dograh v1.31.0, BSD-2). Backward-compatible - istniejaci klienci dzialaja bez zmian.
+
+- **`instructions`** w konstruktorze Server - procedural orchestration (call order, twarde ograniczenia, iteracja po bledach, styl odpowiedzi) wstrzykiwana do system promptu klienta MCP. LLM widzi PRZED pierwszym tool call.
+- **`ToolAnnotations`** per tool - wszystkie 5 toolow oznaczone `readOnlyHint=true`, `idempotentHint=true`, `destructiveHint=false`, `openWorldHint=false`. Klient MCP moze auto-approve wywolania bez monitu.
+- **Strukturalne `ErrorCode`** w odpowiedziach bledu - `out_of_scope`, `missing_arg`, `empty_query`, `not_found`, `corpus_error`. Format `[code] tekst` w `content` + `structuredContent.error_code`. LLM moze iterowac po bledzie, nie tylko widziec tekst.
+- **Drift test** (`npm run drift`) - asercja ze kazdy `ErrorCode` w typie TS jest udokumentowany w `INSTRUCTIONS`, kazdy tool wymieniony w `INSTRUCTIONS` jest w `TOOLS` array, kazdy kod w `errorResult()` jest w typie. Zapobiega odplywaniu instructions od kodu.
+- Smoke test PASS dla wszystkich 5 toolow + scenariusz negatywny (kod `[out_of_scope]` widoczny w response).
+
 ## v0.1.0 - 2026-05-22
 
 Pierwsza wersja (ADR-0022 PATRON, sciezka A).

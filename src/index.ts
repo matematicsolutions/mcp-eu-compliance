@@ -131,14 +131,66 @@ function toFtsMatch(query: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Instructions (procedural orchestration) - wstrzykiwane przez Server
+// do system promptu klienta MCP. LLM widzi to PRZED pierwszym tool call.
+// Drift test (test/drift.mjs) failuje jesli tool wymieniony tutaj nie jest
+// w TOOLS, albo errorCode tooli nie jest w description.
+// Pattern z dograh-hq/dograh v1.31.0 (BSD-2), zaadaptowany na MateMatic.
+// ---------------------------------------------------------------------------
+
+const INSTRUCTIONS = `Ten serwer MCP zwraca verbatim tekst regulacji UE z lokalnego korpusu SQLite FTS5. Zakres: GDPR, AI Act, DORA, NIS2, eIDAS 2.0, CRA (6 regulacji ICP MateMatic, ADR-0022 PATRON). Snapshot offline, zero-LLM w sciezce retrievalu - tresc grounding, nie generowana przez model.
+
+## Kolejnosc wywolan
+
+### Szukanie / browsing
+1. \`eu_search\` - keyword/fraza po artykulach 6 regulacji. Snippety FTS5 (bm25 ranking) z markerami [ ]. Pierwszy krok gdy uzytkownik pyta o pojecie ("breach notification", "high-risk AI", "ICT third party").
+2. \`eu_article\` - pelny tekst konkretnego artykulu raz wybranego (regulation+article_number). Preferuj nad rozumowaniem ze snippetow gdy uzytkownik prosi o przepis doslownie.
+3. \`eu_compare\` - to samo zagadnienie w kilku regulacjach naraz. Uzyj gdy uzytkownik porownuje (np. zgloszenie incydentu DORA vs NIS2 vs CRA, definicje "data" w GDPR vs AI Act).
+
+### Analiza compliance
+4. \`eu_check_applicability\` - ktore z 6 regulacji dotycza sektora (financial/healthcare/manufacturing/etc) i opcjonalnie podsektora. Zwraca poziom pewnosci i artykul-podstawe. **To wskazowka ekspercka, NIE wiazaca ocena prawna**.
+5. \`eu_evidence\` - artefakty dowodowe (audit) wymagane przez konkretna regulacje/artykul. Co przygotowac dla audytora, retencja, pytania kontrolne.
+
+## Twarde ograniczenia
+
+- **Zakres twardy 6 regulacji** (GDPR, AI_ACT, DORA, NIS2, EIDAS2, CRA). Kazda inna nazwa = bledny argument. Baza zawiera 98 regulacji, ale konektor wystawia tylko te 6.
+- **Verbatim** - tekst zwracany bez przetwarzania modelem. NIE prosc o parafraze "lepszym jezykiem" - to grounding.
+- **Snapshot, NIE zrodlo autentyczne**. Kazda odpowiedz konczy sie disclaimerem: wersja autentyczna = Dziennik Urzedowy UE. Sprawdz aktualnosc w EUR-Lex (CELEX). Swiezosc -> \`mcp-eu-sparql\` (live SPARQL).
+- **structuredContent.citations** zawsze wypelnione - regulacja, CELEX, URL EUR-Lex, snapshot. Cytuj te citations w odpowiedzi koncowej.
+
+## Iteracja po bledach
+
+Tool zwraca \`isError: true\` + tekst opisujacy problem. Typowe kody bledow w tresci:
+- \`out_of_scope\` - regulacja poza 6 ICP. Sprobuj inna z listy lub \`mcp-eu-sparql\` dla pelnego EUR-Lex.
+- \`missing_arg\` - brakujacy wymagany parametr. Przeczytaj inputSchema tooli.
+- \`empty_query\` - query po normalizacji nie zawiera szukanych slow. Zadaj uzytkownikowi doprecyzowanie.
+- \`not_found\` - artykul/regulacja nie ma w snapshot. Uzyj \`eu_search\` zeby znalezc.
+- \`corpus_error\` - blad dostepu do SQLite. Wewnetrzny, retry raz przed surface do uzytkownika.
+
+## Styl odpowiedzi
+
+- Cytuj artykuly w formacie "art. X RGOR" lub "[GDPR] art. 33" (krotka konwencja).
+- Przy porownaniach (\`eu_compare\`) uzywaj tabel.
+- Przy stosowalnosci (\`eu_check_applicability\`) ujawnij confidence (high/medium/low) i basis_article.
+- Disclaimer snapshot zawsze pozostaje w odpowiedzi (nie wycinaj).`;
+
+// ---------------------------------------------------------------------------
 // Tooly
 // ---------------------------------------------------------------------------
+
+const READ_ONLY_ANNOTATIONS = {
+    readOnlyHint: true,
+    idempotentHint: true,
+    destructiveHint: false,
+    openWorldHint: false,
+} as const;
 
 const TOOLS = [
     {
         name: "eu_search",
         description:
-            "Wyszukiwanie pelnotekstowe (FTS5) po tresci artykulow regulacji UE. Zwraca snippety verbatim z podswietleniem trafien. Zakres: GDPR, AI Act, DORA, NIS2, eIDAS 2.0, CRA.",
+            "Wyszukiwanie pelnotekstowe (FTS5) po tresci artykulow regulacji UE. Zwraca snippety verbatim z podswietleniem trafien. Zakres: GDPR, AI Act, DORA, NIS2, eIDAS 2.0, CRA. Bledy: `empty_query` (po normalizacji brak slow), `corpus_error` (blad SQLite).",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
             type: "object",
             properties: {
@@ -162,7 +214,8 @@ const TOOLS = [
     {
         name: "eu_article",
         description:
-            "Pelny tekst artykulu (verbatim) po identyfikatorze regulacji i numerze artykulu, wraz z tytulem i rozdzialem.",
+            "Pelny tekst artykulu (verbatim) po identyfikatorze regulacji i numerze artykulu, wraz z tytulem i rozdzialem. Bledy: `out_of_scope` (regulacja poza 6 ICP), `missing_arg` (brak article_number), `not_found` (artykul/regulacja nie ma w snapshot).",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
             type: "object",
             properties: {
@@ -178,7 +231,8 @@ const TOOLS = [
     {
         name: "eu_compare",
         description:
-            "Porownanie tego samego zagadnienia w kilku regulacjach naraz. Dla kazdej regulacji zwraca najlepiej pasujacy artykul (snippet verbatim). Np. obowiazek zgloszenia incydentu w DORA vs NIS2 vs CRA.",
+            "Porownanie tego samego zagadnienia w kilku regulacjach naraz. Dla kazdej regulacji zwraca najlepiej pasujacy artykul (snippet verbatim). Np. obowiazek zgloszenia incydentu w DORA vs NIS2 vs CRA. Bledy: `empty_query`, `corpus_error`.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
             type: "object",
             properties: {
@@ -195,7 +249,8 @@ const TOOLS = [
     {
         name: "eu_check_applicability",
         description:
-            "Ktore z 6 regulacji UE dotycza danego sektora (i opcjonalnie podsektora). Zwraca reguly stosowalnosci z poziomem pewnosci i artykulem-podstawa. To wskazowka ekspercka, nie wiazaca ocena prawna.",
+            "Ktore z 6 regulacji UE dotycza danego sektora (i opcjonalnie podsektora). Zwraca reguly stosowalnosci z poziomem pewnosci i artykulem-podstawa. To wskazowka ekspercka, nie wiazaca ocena prawna. Bledy: `missing_arg` (brak sector), `corpus_error`.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
             type: "object",
             properties: {
@@ -223,7 +278,8 @@ const TOOLS = [
     {
         name: "eu_evidence",
         description:
-            "Artefakty dowodowe (audit) wymagane przez regulacje - jaki dokument/log/certyfikat udowadnia zgodnosc, dla jakiego artykulu, z pytaniami audytora. Opcjonalnie zawezone do jednego artykulu.",
+            "Artefakty dowodowe (audit) wymagane przez regulacje - jaki dokument/log/certyfikat udowadnia zgodnosc, dla jakiego artykulu, z pytaniami audytora. Opcjonalnie zawezone do jednego artykulu. Bledy: `out_of_scope`, `corpus_error`.",
+        annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
             type: "object",
             properties: {
@@ -244,17 +300,31 @@ type ToolResult = {
     isError?: boolean;
 };
 
-function errorResult(text: string): ToolResult {
-    return { content: [{ type: "text", text }], isError: true };
+// Strukturalne kody bledow widoczne dla LLM (drift test test/drift.mjs
+// asercja: kazdy kod tu uzyty musi byc w description odpowiedniego tool +
+// w sekcji "Iteracja po bledach" INSTRUCTIONS).
+type ErrorCode =
+    | "out_of_scope"
+    | "missing_arg"
+    | "empty_query"
+    | "not_found"
+    | "corpus_error";
+
+function errorResult(text: string, code: ErrorCode): ToolResult {
+    return {
+        content: [{ type: "text", text: `[${code}] ${text}` }],
+        structuredContent: { error_code: code },
+        isError: true,
+    };
 }
 
 // ----- eu_search -----------------------------------------------------------
 
 function handleSearch(a: Record<string, unknown>): ToolResult {
     const query = String(a.query ?? "").trim();
-    if (!query) return errorResult("Brak parametru 'query'.");
+    if (!query) return errorResult("Brak parametru 'query'.", "missing_arg");
     const match = toFtsMatch(query);
-    if (!match) return errorResult("Zapytanie nie zawiera szukanych slow.");
+    if (!match) return errorResult("Zapytanie nie zawiera szukanych slow.", "empty_query");
 
     const regs = resolveRegulations(a.regulations);
     const limit = Math.min(Math.max(Number(a.limit) || 8, 1), 25);
@@ -311,9 +381,9 @@ function handleArticle(a: Record<string, unknown>): ToolResult {
     const regulation = String(a.regulation ?? "").toUpperCase().trim();
     const articleNumber = String(a.article_number ?? "").trim();
     if (!SIX_SET.has(regulation)) {
-        return errorResult(`Regulacja '${regulation}' poza zakresem v1 (${SIX.join(", ")}).`);
+        return errorResult(`Regulacja '${regulation}' poza zakresem v1 (${SIX.join(", ")}).`, "out_of_scope");
     }
-    if (!articleNumber) return errorResult("Brak parametru 'article_number'.");
+    if (!articleNumber) return errorResult("Brak parametru 'article_number'.", "missing_arg");
 
     const row = db()
         .prepare(
@@ -327,6 +397,7 @@ function handleArticle(a: Record<string, unknown>): ToolResult {
     if (!row) {
         return errorResult(
             `Nie znaleziono art. ${articleNumber} w ${regulation}. Sprawdz numer (eu_search pomoze znalezc).`,
+            "not_found",
         );
     }
 
@@ -350,9 +421,9 @@ function handleArticle(a: Record<string, unknown>): ToolResult {
 
 function handleCompare(a: Record<string, unknown>): ToolResult {
     const query = String(a.query ?? "").trim();
-    if (!query) return errorResult("Brak parametru 'query'.");
+    if (!query) return errorResult("Brak parametru 'query'.", "missing_arg");
     const match = toFtsMatch(query);
-    if (!match) return errorResult("Zapytanie nie zawiera szukanych slow.");
+    if (!match) return errorResult("Zapytanie nie zawiera szukanych slow.", "empty_query");
 
     const regs = resolveRegulations(a.regulations);
     const lines: string[] = [`Porownanie "${query}" w regulacjach: ${regs.join(", ")}`, ""];
@@ -395,7 +466,7 @@ function handleCompare(a: Record<string, unknown>): ToolResult {
 
 function handleApplicability(a: Record<string, unknown>): ToolResult {
     const sector = String(a.sector ?? "").trim();
-    if (!sector) return errorResult("Brak parametru 'sector'.");
+    if (!sector) return errorResult("Brak parametru 'sector'.", "missing_arg");
     const subsector = a.subsector ? String(a.subsector).trim() : null;
     const ph = SIX.map(() => "?").join(",");
 
@@ -463,7 +534,7 @@ function handleApplicability(a: Record<string, unknown>): ToolResult {
 function handleEvidence(a: Record<string, unknown>): ToolResult {
     const regulation = String(a.regulation ?? "").toUpperCase().trim();
     if (!SIX_SET.has(regulation)) {
-        return errorResult(`Regulacja '${regulation}' poza zakresem v1 (${SIX.join(", ")}).`);
+        return errorResult(`Regulacja '${regulation}' poza zakresem v1 (${SIX.join(", ")}).`, "out_of_scope");
     }
     const article = a.article ? String(a.article).trim() : null;
 
@@ -522,8 +593,8 @@ function handleEvidence(a: Record<string, unknown>): ToolResult {
 // ---------------------------------------------------------------------------
 
 const server = new Server(
-    { name: "mcp-eu-compliance", version: "0.1.0" },
-    { capabilities: { tools: {} } },
+    { name: "mcp-eu-compliance", version: "0.2.0" },
+    { capabilities: { tools: {} }, instructions: INSTRUCTIONS },
 );
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -531,6 +602,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         name: t.name,
         description: t.description,
         inputSchema: t.inputSchema,
+        annotations: t.annotations,
     })),
 }));
 
@@ -550,11 +622,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             case "eu_evidence":
                 return handleEvidence(a);
             default:
-                return errorResult(`Nieznane narzedzie: ${name}`);
+                return errorResult(`Nieznane narzedzie: ${name}`, "missing_arg");
         }
     } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        return errorResult(`Blad dostepu do korpusu EU: ${msg}`);
+        return errorResult(`Blad dostepu do korpusu EU: ${msg}`, "corpus_error");
     }
 });
 
