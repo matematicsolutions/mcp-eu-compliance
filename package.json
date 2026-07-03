@@ -1,6 +1,6 @@
 {
-  "name": "mcp-eu-compliance",
-  "version": "0.2.0",
+  "name": "@matematicsolutions/mcp-eu-compliance",
+  "version": "0.2.1",
   "description": "MCP server - offline EU compliance corpus (EUR-Lex full text via local SQLite FTS5, verbatim zero-LLM) for GDPR, AI Act, DORA, NIS2, eIDAS 2.0, CRA",
   "main": "dist/index.js",
   "scripts": {
@@ -36,5 +36,20 @@
   },
   "engines": {
     "node": ">=22.5.0"
+  },
+  "mcpName": "io.github.matematicsolutions/mcp-eu-compliance",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/matematicsolutions/mcp-eu-compliance.git"
+  },
+  "bin": {
+    "mcp-eu-compliance": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }

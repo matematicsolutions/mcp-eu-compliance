@@ -31,6 +31,9 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { DatabaseSync } from "node:sqlite";
 import * as path from "node:path";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import { createHash } from "node:crypto";
 
 // ---------------------------------------------------------------------------
 // Konfiguracja / baza
@@ -42,7 +45,67 @@ const SIX = ["GDPR", "AI_ACT", "DORA", "NIS2", "EIDAS2", "CRA"] as const;
 type RegId = (typeof SIX)[number];
 const SIX_SET = new Set<string>(SIX);
 
-const DB_PATH = path.join(__dirname, "..", "data", "regulations.db");
+// Korpus EUR-Lex (~54 MB) NIE jest bundlowany w paczce npm (za duzy). Pobierany
+// JEDNORAZOWO przy pierwszym uruchomieniu z naszego GitHub release (stabilny URL,
+// kontrolowany przez nas), weryfikowany sha256, cache'owany w katalogu uzytkownika.
+// To bootstrap korpusu, nie wywolanie per-query - sciezka ZAPYTAN pozostaje offline,
+// verbatim, zero-LLM (zgodnie z AGENTS.md). Air-gap / pelny offline: ustaw
+// EU_COMPLIANCE_DB na lokalna kopie regulations.db -> zero wywolan sieciowych.
+const CORPUS_URL =
+    "https://github.com/matematicsolutions/mcp-eu-compliance/releases/download/corpus-v1/regulations.db";
+const CORPUS_SHA256 =
+    "64e74af9e8f27cbe829bd61682ca739eec17ca10237ef526179277cc119bf1e4";
+const BUNDLED_DB = path.join(__dirname, "..", "data", "regulations.db");
+const CACHE_DB = path.join(
+    os.homedir(),
+    ".matematic",
+    "cache",
+    "eu-compliance",
+    "regulations.db",
+);
+
+let DB_PATH = "";
+
+function sha256File(p: string): string {
+    return createHash("sha256").update(fs.readFileSync(p)).digest("hex");
+}
+
+// Rozwiazuje sciezke korpusu i pobiera go raz, jesli trzeba. Kolejnosc:
+//   1. EU_COMPLIANCE_DB (jawny override - air-gap, musi istniec)
+//   2. data/regulations.db w repo (tryb dev po `npm run fetch-corpus`)
+//   3. cache uzytkownika (pobierz raz z release, sprawdz sha256)
+async function ensureCorpus(): Promise<void> {
+    const override = process.env.EU_COMPLIANCE_DB;
+    if (override) {
+        if (!fs.existsSync(override)) {
+            throw new Error(`EU_COMPLIANCE_DB wskazuje nieistniejacy plik: ${override}`);
+        }
+        DB_PATH = override;
+        return;
+    }
+    if (fs.existsSync(BUNDLED_DB) && fs.statSync(BUNDLED_DB).size > 1_000_000) {
+        DB_PATH = BUNDLED_DB;
+        return;
+    }
+    if (fs.existsSync(CACHE_DB) && fs.statSync(CACHE_DB).size > 1_000_000) {
+        DB_PATH = CACHE_DB;
+        return;
+    }
+    fs.mkdirSync(path.dirname(CACHE_DB), { recursive: true });
+    process.stderr.write(`Pobieram korpus EU (~54 MB) raz do ${CACHE_DB} ...\n`);
+    const res = await fetch(CORPUS_URL);
+    if (!res.ok) throw new Error(`Blad pobierania korpusu: HTTP ${res.status}`);
+    const tmp = `${CACHE_DB}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, Buffer.from(await res.arrayBuffer()));
+    const got = sha256File(tmp);
+    if (got !== CORPUS_SHA256) {
+        fs.rmSync(tmp, { force: true });
+        throw new Error(`Niezgodny sha256 korpusu (oczekiwano ${CORPUS_SHA256}, jest ${got})`);
+    }
+    fs.renameSync(tmp, CACHE_DB);
+    DB_PATH = CACHE_DB;
+    process.stderr.write("Korpus gotowy (sha256 OK).\n");
+}
 
 let dbHandle: DatabaseSync | null = null;
 function db(): DatabaseSync {
@@ -89,22 +152,80 @@ interface RegRow {
     eur_lex_url: string | null;
 }
 
-function getReg(id: string): RegRow | null {
-    return (
-        (db()
-            .prepare(
-                "SELECT id, full_name, celex_id, eur_lex_url FROM regulations WHERE id = ?",
-            )
-            .get(id) as RegRow | undefined) ?? null
-    );
+// Pelne nazwy fallback (gdy korpus nie poda source_full_name). Korpus Ansvar
+// trzyma nazwe per-provision w tabeli `content`, ale dla pewnosci cytowania
+// mamy tu kanoniczne nazwy 6 regulacji ICP.
+const FULL_NAMES: Record<string, string> = {
+    GDPR: "General Data Protection Regulation",
+    AI_ACT: "Artificial Intelligence Act",
+    DORA: "Digital Operational Resilience Act",
+    NIS2: "Directive (EU) 2022/2555 (NIS2)",
+    EIDAS2: "European Digital Identity Framework (eIDAS 2.0)",
+    CRA: "Cyber Resilience Act",
+};
+
+// Regulacja-poziom URL EUR-Lex: bierzemy ELI z probki source_url (obcinajac
+// fragment #art_N), z fallbackiem na CELEX gdy brak.
+function regUrl(sampleUrl: string | null, celex: string | null): string | null {
+    if (sampleUrl) {
+        const h = sampleUrl.indexOf("#");
+        return h >= 0 ? sampleUrl.slice(0, h) : sampleUrl;
+    }
+    return celex
+        ? `https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:${celex}`
+        : null;
 }
 
-function buildCitation(reg: RegRow, articleNumber?: string) {
+// canonical_ref ma postac "<REGULACJA>:art_<numer>" (np. "GDPR:art_33").
+// Kazda regulacja ma tez wpis "<REGULACJA>:meta" (wykluczany z wynikow).
+function refToReg(ref: string): string {
+    const i = ref.indexOf(":");
+    return i >= 0 ? ref.slice(0, i) : ref;
+}
+function refToArticle(ref: string): string {
+    const i = ref.indexOf(":art_");
+    return i >= 0 ? ref.slice(i + 5) : ref;
+}
+
+// Metadane regulacji w nowym schemacie Ansvar (3-chassis): celex z
+// source_registry, pelna nazwa + bazowy URL z tabeli content (przez art_1).
+const regCache = new Map<string, RegRow | null>();
+function getReg(id: string): RegRow | null {
+    if (regCache.has(id)) return regCache.get(id) ?? null;
+    const row = db()
+        .prepare(
+            `SELECT sr.regulation AS id, sr.celex_id AS celex_id,
+                    c.source_full_name AS full_name, c.source_url AS sample_url
+             FROM source_registry sr
+             LEFT JOIN provisions p ON p.canonical_ref = sr.regulation || ':art_1'
+             LEFT JOIN content c ON c.id = p.id
+             WHERE sr.regulation = ?`,
+        )
+        .get(id) as
+        | { id: string; celex_id: string | null; full_name: string | null; sample_url: string | null }
+        | undefined;
+    if (!row) {
+        regCache.set(id, null);
+        return null;
+    }
+    const reg: RegRow = {
+        id: row.id,
+        full_name: row.full_name ?? FULL_NAMES[id] ?? id,
+        celex_id: row.celex_id,
+        eur_lex_url: regUrl(row.sample_url, row.celex_id),
+    };
+    regCache.set(id, reg);
+    return reg;
+}
+
+// articleUrl (opcjonalnie) nadpisuje URL regulacji precyzyjnym linkiem do
+// artykulu (content.source_url z fragmentem #art_N).
+function buildCitation(reg: RegRow, articleNumber?: string, articleUrl?: string | null) {
     return {
         regulation: reg.id,
         full_name: reg.full_name,
         celex_id: reg.celex_id,
-        eur_lex_url: reg.eur_lex_url,
+        eur_lex_url: articleUrl ?? reg.eur_lex_url,
         ...(articleNumber ? { article_number: articleNumber } : {}),
         snapshot: snapshot(),
     };
@@ -328,23 +449,27 @@ function handleSearch(a: Record<string, unknown>): ToolResult {
 
     const regs = resolveRegulations(a.regulations);
     const limit = Math.min(Math.max(Number(a.limit) || 8, 1), 25);
-    const ph = regs.map(() => "?").join(",");
 
+    const regLikes = regs.map(() => "p.canonical_ref LIKE ?").join(" OR ");
     const rows = db()
         .prepare(
-            `SELECT a.regulation, a.article_number, a.title,
-                    snippet(articles_fts, 3, '[', ']', ' ... ', 12) AS snip
-             FROM articles_fts f
-             JOIN articles a ON a.rowid = f.rowid
-             WHERE articles_fts MATCH ? AND a.regulation IN (${ph})
+            `SELECT p.canonical_ref AS ref, p.title AS title,
+                    snippet(content_fts, 0, '[', ']', ' ... ', 12) AS snip,
+                    c.source_url AS url
+             FROM content_fts f
+             JOIN provisions p ON p.id = f.rowid
+             JOIN content c ON c.id = p.id
+             WHERE content_fts MATCH ?
+               AND instr(p.canonical_ref, ':art_') > 0
+               AND (${regLikes})
              ORDER BY rank
              LIMIT ?`,
         )
-        .all(match, ...regs, limit) as {
-        regulation: string;
-        article_number: string;
+        .all(match, ...regs.map((r) => `${r}:%`), limit) as {
+        ref: string;
         title: string | null;
         snip: string;
+        url: string | null;
     }[];
 
     if (rows.length === 0) {
@@ -362,12 +487,14 @@ function handleSearch(a: Record<string, unknown>): ToolResult {
     const lines: string[] = [`Trafienia dla "${query}" (${rows.length}):`, ""];
     const citations: unknown[] = [];
     for (const r of rows) {
-        const reg = getReg(r.regulation);
+        const regId = refToReg(r.ref);
+        const articleNumber = refToArticle(r.ref);
+        const reg = getReg(regId);
         const ttl = r.title ? ` - ${r.title}` : "";
-        lines.push(`[${r.regulation}] art. ${r.article_number}${ttl}`);
+        lines.push(`[${regId}] art. ${articleNumber}${ttl}`);
         lines.push(`  ${r.snip.replace(/\s+/g, " ").trim()}`);
         lines.push("");
-        if (reg) citations.push(buildCitation(reg, r.article_number));
+        if (reg) citations.push(buildCitation(reg, articleNumber, r.url));
     }
     return {
         content: [{ type: "text", text: lines.join("\n") + disclaimer() }],
@@ -387,11 +514,14 @@ function handleArticle(a: Record<string, unknown>): ToolResult {
 
     const row = db()
         .prepare(
-            `SELECT regulation, article_number, title, text, chapter
-             FROM articles WHERE regulation = ? AND article_number = ?`,
+            `SELECT p.canonical_ref AS ref, p.title AS title, p.body AS body,
+                    c.source_url AS url
+             FROM provisions p
+             JOIN content c ON c.id = p.id
+             WHERE p.canonical_ref = ?`,
         )
-        .get(regulation, articleNumber) as
-        | { regulation: string; article_number: string; title: string | null; text: string; chapter: string | null }
+        .get(`${regulation}:art_${articleNumber}`) as
+        | { ref: string; title: string | null; body: string; url: string | null }
         | undefined;
 
     if (!row) {
@@ -403,17 +533,16 @@ function handleArticle(a: Record<string, unknown>): ToolResult {
 
     const reg = getReg(regulation)!;
     const head = [
-        `[${row.regulation}] Artykul ${row.article_number}`,
+        `[${regulation}] Artykul ${articleNumber}`,
         row.title ? `Tytul: ${row.title}` : null,
-        row.chapter ? `Rozdzial: ${row.chapter}` : null,
         `CELEX: ${reg.celex_id ?? "-"}`,
     ]
         .filter((x): x is string => Boolean(x))
         .join("\n");
 
     return {
-        content: [{ type: "text", text: head + "\n\n" + row.text + disclaimer() }],
-        structuredContent: { citations: [buildCitation(reg, row.article_number)] },
+        content: [{ type: "text", text: head + "\n\n" + row.body + disclaimer() }],
+        structuredContent: { citations: [buildCitation(reg, articleNumber, row.url)] },
     };
 }
 
@@ -430,18 +559,22 @@ function handleCompare(a: Record<string, unknown>): ToolResult {
     const citations: unknown[] = [];
 
     const stmt = db().prepare(
-        `SELECT a.article_number, a.title,
-                snippet(articles_fts, 3, '[', ']', ' ... ', 14) AS snip
-         FROM articles_fts f
-         JOIN articles a ON a.rowid = f.rowid
-         WHERE articles_fts MATCH ? AND a.regulation = ?
+        `SELECT p.canonical_ref AS ref, p.title AS title,
+                snippet(content_fts, 0, '[', ']', ' ... ', 14) AS snip,
+                c.source_url AS url
+         FROM content_fts f
+         JOIN provisions p ON p.id = f.rowid
+         JOIN content c ON c.id = p.id
+         WHERE content_fts MATCH ?
+           AND instr(p.canonical_ref, ':art_') > 0
+           AND p.canonical_ref LIKE ?
          ORDER BY rank
          LIMIT 1`,
     );
 
     for (const id of regs) {
-        const row = stmt.get(match, id) as
-            | { article_number: string; title: string | null; snip: string }
+        const row = stmt.get(match, `${id}:%`) as
+            | { ref: string; title: string | null; snip: string; url: string | null }
             | undefined;
         const reg = getReg(id)!;
         if (!row) {
@@ -449,11 +582,12 @@ function handleCompare(a: Record<string, unknown>): ToolResult {
             lines.push("");
             continue;
         }
+        const articleNumber = refToArticle(row.ref);
         const ttl = row.title ? ` - ${row.title}` : "";
-        lines.push(`[${id}] art. ${row.article_number}${ttl}`);
+        lines.push(`[${id}] art. ${articleNumber}${ttl}`);
         lines.push(`  ${row.snip.replace(/\s+/g, " ").trim()}`);
         lines.push("");
-        citations.push(buildCitation(reg, row.article_number));
+        citations.push(buildCitation(reg, articleNumber, row.url));
     }
 
     return {
@@ -593,7 +727,7 @@ function handleEvidence(a: Record<string, unknown>): ToolResult {
 // ---------------------------------------------------------------------------
 
 const server = new Server(
-    { name: "mcp-eu-compliance", version: "0.2.0" },
+    { name: "mcp-eu-compliance", version: "0.2.1" },
     { capabilities: { tools: {} }, instructions: INSTRUCTIONS },
 );
 
@@ -631,6 +765,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 async function main() {
+    await ensureCorpus();
     const transport = new StdioServerTransport();
     await server.connect(transport);
     process.stderr.write(
