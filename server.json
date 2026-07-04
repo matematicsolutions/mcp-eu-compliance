@@ -1,8 +1,8 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.matematicsolutions/mcp-eu-compliance",
-  "description": "Offline MCP server: EU compliance full text (GDPR, AI Act, DORA, NIS2, eIDAS2, CRA), verbatim.",
-  "version": "0.2.1",
+  "description": "Offline MCP server: EU digital/data/cyber compliance full text (14 regs), verbatim + citations.",
+  "version": "0.3.0",
   "repository": {
     "url": "https://github.com/matematicsolutions/mcp-eu-compliance",
     "source": "github"
@@ -12,7 +12,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@matematicsolutions/mcp-eu-compliance",
-      "version": "0.2.1",
+      "version": "0.3.0",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
