@@ -34,7 +34,12 @@ await call("eu_compare", { query: "incident reporting timeline", regulations: ["
 await call("eu_check_applicability", { sector: "financial", subsector: "bank" });
 await call("eu_evidence", { regulation: "DORA", article: "17" });
 
-// negatywne: regulacja poza zakresem
+// poszerzony zakres (v0.3.0): nowe regulacje digital/data/cyber
+await call("eu_search", { query: "very large online platform", regulations: ["DSA"], limit: 2 });
+await call("eu_compare", { query: "data access rights", regulations: ["DATA_ACT", "DGA", "GDPR"] });
+await call("eu_evidence", { regulation: "DSA", article: "34" });
+
+// negatywne: regulacja poza zakresem (MICA nadal poza 14)
 await call("eu_article", { regulation: "MICA", article_number: "1" });
 // negatywne: FTS injection-ish
 await call("eu_search", { query: "AI Act (high-risk) \"systems\"", limit: 1 });

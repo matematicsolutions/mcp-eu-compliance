@@ -2,7 +2,7 @@
 
 Serwer **MCP** udostepniajacy **offline korpus prawa UE** (EUR-Lex, pelny tekst) w lokalnym **SQLite FTS5**, z narzedziami compliance. Snippety zwracane **verbatim** z bazy (zero-LLM) - kazdy z identyfikatorem **CELEX** i URL do EUR-Lex. Anti-halucynacja przez mechanike, nie przez zaufanie do modelu.
 
-**Zakres v1:** GDPR, AI Act, DORA, NIS2, eIDAS 2.0, CRA.
+**Zakres (14 regulacji, digital/data/cyber):** GDPR, AI Act, DORA, NIS2, eIDAS 2.0, CRA, DSA, DMA, Data Act, DGA, LED, ePrivacy, Cybersecurity Act, CER.
 
 Komplementarny do [`mcp-eu-sparql`](https://github.com/matematicsolutions/mcp-eu-sparql): tamten odkrywa akty na zywo (SPARQL Cellar), ten daje verbatim tekst + analize compliance offline (bez sieci w runtime).
 
@@ -32,7 +32,7 @@ Konfiguracja w kliencie MCP (np. `mcp-servers.json`):
 | `eu_search(query, regulations?, limit?)` | Pelnotekstowo (FTS5) po artykulach, snippety verbatim. |
 | `eu_article(regulation, article_number)` | Pelny tekst artykulu + tytul + rozdzial + CELEX. |
 | `eu_compare(query, regulations?)` | To samo zagadnienie w kilku regulacjach naraz (np. zgloszenie incydentu DORA vs NIS2 vs CRA). |
-| `eu_check_applicability(sector, subsector?)` | Ktore z 6 regulacji dotycza sektora, z poziomem pewnosci i artykulem-podstawa. |
+| `eu_check_applicability(sector, subsector?)` | Ktore z 14 regulacji dotycza sektora, z poziomem pewnosci i artykulem-podstawa. |
 | `eu_evidence(regulation, article?)` | Artefakty dowodowe (audit) - jaki dokument/log/certyfikat udowadnia zgodnosc. |
 
 Kazde narzedzie zwraca `structuredContent.citations` (regulacja, CELEX, URL EUR-Lex, snapshot).

@@ -6,7 +6,7 @@ Plik standardu [agents.md](https://agents.md) (Linux Foundation / Agentic AI Fou
 
 Serwer **MCP (Model Context Protocol)** udostepniajacy **offline korpus prawa UE** (EUR-Lex, pelny tekst) w lokalnym **SQLite FTS5**, z narzedziami zorientowanymi na compliance. **Verbatim, zero-LLM** w sciezce retrievalu - snippety zwracane bez zmian z bazy, kazdy z CELEX i URL do EUR-Lex.
 
-Zakres v1 (ADR-0022 PATRON): **6 regulacji** - GDPR, AI Act, DORA, NIS2, eIDAS 2.0, CRA.
+Zakres (ADR-0022 + poszerzenie decyzja WM 2026-07-04): **14 regulacji digital/data/cyber** - GDPR, AI Act, DORA, NIS2, eIDAS 2.0, CRA, DSA, DMA, Data Act, DGA, LED, ePrivacy, Cybersecurity Act, CER. Wszystkie 14 maja w korpusie pelny tekst + reguly stosowalnosci + artefakty dowodowe (komplet 5 narzedzi dziala).
 
 6. konektor rodziny prawa MateMatic ([`mcp-saos`](https://github.com/matematicsolutions/mcp-saos), [`mcp-nsa`](https://github.com/matematicsolutions/mcp-nsa), [`mcp-isap`](https://github.com/matematicsolutions/mcp-isap), [`mcp-krs`](https://github.com/matematicsolutions/mcp-krs), [`mcp-eu-sparql`](https://github.com/matematicsolutions/mcp-eu-sparql), `mcp-eu-compliance` (ten)). **Komplementarny do mcp-eu-sparql**: tamten odkrywa akty na zywo (SPARQL Cellar), ten daje verbatim tekst + analize compliance offline.
 
@@ -15,7 +15,7 @@ Zakres v1 (ADR-0022 PATRON): **6 regulacji** - GDPR, AI Act, DORA, NIS2, eIDAS 2
 - **Kazde wywolanie narzedzia MUSI zwracac `structuredContent.citations`** z: identyfikatorem regulacji, pelna nazwa, CELEX, URL EUR-Lex, (opcjonalnie) numerem artykulu, snapshotem korpusu.
 - **Verbatim** - tekst zwracany bez przetwarzania modelem (zero-LLM). To zrodlo grounding (anti-halucynacja).
 - **Snapshot, nie zrodlo autentyczne** - kazda odpowiedz ma disclaimer: wersja autentyczna = Dziennik Urzedowy UE; weryfikacja w EUR-Lex.
-- **Zakres twardy 6 regulacji** - mimo ze baza ma 116 (snapshot 2026-07-04; korpus rosnie, w bazie `db_metadata.regulations_count`), konektor wystawia tylko 6 (zakres v1). Filtr w `SIX`.
+- **Zakres twardy 14 regulacji** - mimo ze baza ma 116 (snapshot 2026-07-04; korpus rosnie, w bazie `db_metadata.regulations_count`), konektor wystawia tylko 14 (zakres v1). Filtr w `SCOPE`.
 - **Offline** - zero wywolan sieciowych w runtime. Swiezosc deleguj do mcp-eu-sparql (live).
 - **Reguly stosowalnosci to wskazowka, nie ocena prawna** (Art. 6 Konstytucji Patrona, human-in-the-loop).
 
@@ -26,7 +26,7 @@ Zakres v1 (ADR-0022 PATRON): **6 regulacji** - GDPR, AI Act, DORA, NIS2, eIDAS 2
 | `eu_search` | `query`, `regulations?`, `limit?` | snippety FTS5 verbatim + citations |
 | `eu_article` | `regulation`, `article_number` | pelny tekst artykulu + citation |
 | `eu_compare` | `query`, `regulations?` | najlepszy artykul per regulacja + citations |
-| `eu_check_applicability` | `sector`, `subsector?` | reguly stosowalnosci 6 regulacji + citations |
+| `eu_check_applicability` | `sector`, `subsector?` | reguly stosowalnosci 14 regulacji + citations |
 | `eu_evidence` | `regulation`, `article?` | artefakty dowodowe (audit) + citation |
 
 Pelny opis: `src/index.ts` + `README.md`.
@@ -51,7 +51,7 @@ npm run smoke          # smoke test 5 toolow przez klienta MCP
 
 ## Czego NIE robic (twarde reguly)
 
-- **NIE rozszerzaj zakresu poza 6 regulacji** bez bumpu CHANGELOG i decyzji (zakres v1 z ADR-0022).
+- **NIE rozszerzaj zakresu poza aktualne 14 regulacji** bez bumpu CHANGELOG i decyzji WM (zakres poszerzony 6->14 decyzja WM 2026-07-04 wzgledem ADR-0022; edytuj `SCOPE` + enumy + FULL_NAMES).
 - **NIE przetwarzaj tekstu modelem** w sciezce retrievalu - verbatim to cala wartosc (grounding).
 - **NIE pomijaj disclaimera snapshot** - cytowanie jako zrodlo autentyczne wprowadza w blad.
 - **NIE dodawaj mapowan ISO/NIST** (tekst normy ISO chroniony; poza zakresem v1).

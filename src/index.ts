@@ -5,8 +5,9 @@
 // Verbatim, zero-LLM w sciezce retrievalu - snippety sa zwracane bez zmian
 // z bazy, kazdy z identyfikatorem CELEX i URL do EUR-Lex.
 //
-// Zakres v1 (ADR-0022 PATRON): 6 regulacji - GDPR, AI Act, DORA, NIS2,
-// eIDAS 2.0, CRA. Korpus pochodzi z Ansvar-Systems/EU_compliance_MCP
+// Zakres (ADR-0022 + poszerzenie WM 2026-07-04): 14 regulacji digital/data/cyber -
+// GDPR, AI Act, DORA, NIS2, eIDAS 2.0, CRA, DSA, DMA, Data Act, DGA, LED, ePrivacy,
+// Cybersecurity Act, CER. Korpus pochodzi z Ansvar-Systems/EU_compliance_MCP
 // (Apache-2.0); tekst regulacji UE jest reuzywalny (EUR-Lex, Decyzja
 // 2011/833/EU). Patrz THIRD_PARTY_INSPIRATIONS.md.
 //
@@ -39,11 +40,11 @@ import { createHash } from "node:crypto";
 // Konfiguracja / baza
 // ---------------------------------------------------------------------------
 
-// Zakres v1 - 6 regulacji pod ICP MateMatic (ADR-0022). Kazde zapytanie jest
+// Zakres v1 - 14 regulacji pod ICP MateMatic (ADR-0022). Kazde zapytanie jest
 // twardo filtrowane do tego zbioru, niezaleznie od tego co jest w bazie.
-const SIX = ["GDPR", "AI_ACT", "DORA", "NIS2", "EIDAS2", "CRA"] as const;
-type RegId = (typeof SIX)[number];
-const SIX_SET = new Set<string>(SIX);
+const SCOPE = ["GDPR", "AI_ACT", "DORA", "NIS2", "EIDAS2", "CRA", "DSA", "DMA", "DATA_ACT", "DGA", "LED", "EPRIVACY", "CYBERSECURITY_ACT", "CER"] as const;
+type RegId = (typeof SCOPE)[number];
+const SCOPE_SET = new Set<string>(SCOPE);
 
 // Korpus EUR-Lex (~54 MB) NIE jest bundlowany w paczce npm (za duzy). Pobierany
 // JEDNORAZOWO przy pierwszym uruchomieniu z naszego GitHub release (stabilny URL,
@@ -154,7 +155,7 @@ interface RegRow {
 
 // Pelne nazwy fallback (gdy korpus nie poda source_full_name). Korpus Ansvar
 // trzyma nazwe per-provision w tabeli `content`, ale dla pewnosci cytowania
-// mamy tu kanoniczne nazwy 6 regulacji ICP.
+// mamy tu kanoniczne nazwy regulacji ICP (zakres digital/data/cyber).
 const FULL_NAMES: Record<string, string> = {
     GDPR: "General Data Protection Regulation",
     AI_ACT: "Artificial Intelligence Act",
@@ -162,6 +163,14 @@ const FULL_NAMES: Record<string, string> = {
     NIS2: "Directive (EU) 2022/2555 (NIS2)",
     EIDAS2: "European Digital Identity Framework (eIDAS 2.0)",
     CRA: "Cyber Resilience Act",
+    DSA: "Digital Services Act",
+    DMA: "Digital Markets Act",
+    DATA_ACT: "Data Act",
+    DGA: "Data Governance Act",
+    LED: "Law Enforcement Directive (EU) 2016/680",
+    EPRIVACY: "ePrivacy Directive 2002/58/EC",
+    CYBERSECURITY_ACT: "EU Cybersecurity Act",
+    CER: "Critical Entities Resilience Directive",
 };
 
 // Regulacja-poziom URL EUR-Lex: bierzemy ELI z probki source_url (obcinajac
@@ -231,14 +240,14 @@ function buildCitation(reg: RegRow, articleNumber?: string, articleUrl?: string 
     };
 }
 
-// Ogranicza liste regulacji z wejscia do dozwolonego zbioru SIX.
+// Ogranicza liste regulacji z wejscia do dozwolonego zbioru SCOPE.
 // Brak/puste -> wszystkie 6.
 function resolveRegulations(input: unknown): RegId[] {
-    if (!Array.isArray(input) || input.length === 0) return [...SIX];
+    if (!Array.isArray(input) || input.length === 0) return [...SCOPE];
     const out = input
         .map((x) => String(x).toUpperCase().trim())
-        .filter((x): x is RegId => SIX_SET.has(x));
-    return out.length > 0 ? out : [...SIX];
+        .filter((x): x is RegId => SCOPE_SET.has(x));
+    return out.length > 0 ? out : [...SCOPE];
 }
 
 // Zamienia zapytanie uzytkownika na bezpieczny MATCH FTS5: kazdy term jako
@@ -260,22 +269,22 @@ function toFtsMatch(query: string): string {
 // ---------------------------------------------------------------------------
 
 function buildInstructions(): string {
-    return `Ten serwer MCP zwraca verbatim tekst regulacji UE z lokalnego korpusu SQLite FTS5. Zakres: GDPR, AI Act, DORA, NIS2, eIDAS 2.0, CRA (6 regulacji ICP MateMatic, ADR-0022 PATRON). Snapshot offline, zero-LLM w sciezce retrievalu - tresc grounding, nie generowana przez model.
+    return `Ten serwer MCP zwraca verbatim tekst regulacji UE z lokalnego korpusu SQLite FTS5. Zakres (digital/data/cyber compliance UE, 14 regulacji): GDPR, AI Act, DORA, NIS2, eIDAS 2.0, CRA, DSA, DMA, Data Act, DGA, LED, ePrivacy, Cybersecurity Act, CER. Poszerzenie zakresu decyzja WM 2026-07-04 wzgledem ADR-0022. Snapshot offline, zero-LLM w sciezce retrievalu - tresc grounding, nie generowana przez model.
 
 ## Kolejnosc wywolan
 
 ### Szukanie / browsing
-1. \`eu_search\` - keyword/fraza po artykulach 6 regulacji. Snippety FTS5 (bm25 ranking) z markerami [ ]. Pierwszy krok gdy uzytkownik pyta o pojecie ("breach notification", "high-risk AI", "ICT third party").
+1. \`eu_search\` - keyword/fraza po artykulach 14 regulacji. Snippety FTS5 (bm25 ranking) z markerami [ ]. Pierwszy krok gdy uzytkownik pyta o pojecie ("breach notification", "high-risk AI", "ICT third party").
 2. \`eu_article\` - pelny tekst konkretnego artykulu raz wybranego (regulation+article_number). Preferuj nad rozumowaniem ze snippetow gdy uzytkownik prosi o przepis doslownie.
 3. \`eu_compare\` - to samo zagadnienie w kilku regulacjach naraz. Uzyj gdy uzytkownik porownuje (np. zgloszenie incydentu DORA vs NIS2 vs CRA, definicje "data" w GDPR vs AI Act).
 
 ### Analiza compliance
-4. \`eu_check_applicability\` - ktore z 6 regulacji dotycza sektora (financial/healthcare/manufacturing/etc) i opcjonalnie podsektora. Zwraca poziom pewnosci i artykul-podstawe. **To wskazowka ekspercka, NIE wiazaca ocena prawna**.
+4. \`eu_check_applicability\` - ktore z 14 regulacji dotycza sektora (financial/healthcare/manufacturing/etc) i opcjonalnie podsektora. Zwraca poziom pewnosci i artykul-podstawe. **To wskazowka ekspercka, NIE wiazaca ocena prawna**.
 5. \`eu_evidence\` - artefakty dowodowe (audit) wymagane przez konkretna regulacje/artykul. Co przygotowac dla audytora, retencja, pytania kontrolne.
 
 ## Twarde ograniczenia
 
-- **Zakres twardy 6 regulacji** (GDPR, AI_ACT, DORA, NIS2, EIDAS2, CRA). Kazda inna nazwa = bledny argument. Baza (snapshot) zawiera ponad 100 regulacji (aktualnie 116, 2026-07-04; korpus rosnie), ale konektor wystawia tylko te 6.
+- **Zakres twardy 14 regulacji** (GDPR, AI_ACT, DORA, NIS2, EIDAS2, CRA, DSA, DMA, DATA_ACT, DGA, LED, EPRIVACY, CYBERSECURITY_ACT, CER). Kazda inna nazwa = bledny argument. Baza (snapshot) zawiera ponad 100 regulacji (aktualnie 116, 2026-07-04; korpus rosnie), ale konektor wystawia tylko te 14.
 - **Verbatim** - tekst zwracany bez przetwarzania modelem. NIE prosc o parafraze "lepszym jezykiem" - to grounding.
 - **Snapshot, NIE zrodlo autentyczne**. Kazda odpowiedz konczy sie disclaimerem: wersja autentyczna = Dziennik Urzedowy UE. Sprawdz aktualnosc w EUR-Lex (CELEX). Swiezosc -> \`mcp-eu-sparql\` (live SPARQL).
 - **structuredContent.citations** zawsze wypelnione - regulacja, CELEX, URL EUR-Lex, snapshot. Cytuj te citations w odpowiedzi koncowej.
@@ -312,7 +321,7 @@ const TOOLS = [
     {
         name: "eu_search",
         description:
-            "Wyszukiwanie pelnotekstowe (FTS5) po tresci artykulow regulacji UE. Zwraca snippety verbatim z podswietleniem trafien. Zakres: GDPR, AI Act, DORA, NIS2, eIDAS 2.0, CRA. Bledy: `empty_query` (po normalizacji brak slow), `corpus_error` (blad SQLite).",
+            "Wyszukiwanie pelnotekstowe (FTS5) po tresci artykulow regulacji UE. Zwraca snippety verbatim z podswietleniem trafien. Zakres: 14 regulacji digital/data/cyber (GDPR, AI Act, DORA, NIS2, eIDAS 2.0, CRA, DSA, DMA, Data Act, DGA, LED, ePrivacy, Cybersecurity Act, CER). Bledy: `empty_query` (po normalizacji brak slow), `corpus_error` (blad SQLite).",
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
             type: "object",
@@ -323,7 +332,7 @@ const TOOLS = [
                 },
                 regulations: {
                     type: "array",
-                    items: { type: "string", enum: [...SIX] },
+                    items: { type: "string", enum: [...SCOPE] },
                     description: "Opcjonalny podzbior regulacji. Brak = wszystkie 6.",
                 },
                 limit: {
@@ -342,7 +351,7 @@ const TOOLS = [
         inputSchema: {
             type: "object",
             properties: {
-                regulation: { type: "string", enum: [...SIX] },
+                regulation: { type: "string", enum: [...SCOPE] },
                 article_number: {
                     type: "string",
                     description: "Numer artykulu, np. '33' (GDPR), '6' (AI Act).",
@@ -362,7 +371,7 @@ const TOOLS = [
                 query: { type: "string", description: "Zagadnienie do porownania." },
                 regulations: {
                     type: "array",
-                    items: { type: "string", enum: [...SIX] },
+                    items: { type: "string", enum: [...SCOPE] },
                     description: "Regulacje do porownania (min. 2). Brak = wszystkie 6.",
                 },
             },
@@ -372,7 +381,7 @@ const TOOLS = [
     {
         name: "eu_check_applicability",
         description:
-            "Ktore z 6 regulacji UE dotycza danego sektora (i opcjonalnie podsektora). Zwraca reguly stosowalnosci z poziomem pewnosci i artykulem-podstawa. To wskazowka ekspercka, nie wiazaca ocena prawna. Bledy: `missing_arg` (brak sector), `corpus_error`.",
+            "Ktore z 14 regulacji UE dotycza danego sektora (i opcjonalnie podsektora). Zwraca reguly stosowalnosci z poziomem pewnosci i artykulem-podstawa. To wskazowka ekspercka, nie wiazaca ocena prawna. Bledy: `missing_arg` (brak sector), `corpus_error`.",
         annotations: READ_ONLY_ANNOTATIONS,
         inputSchema: {
             type: "object",
@@ -406,7 +415,7 @@ const TOOLS = [
         inputSchema: {
             type: "object",
             properties: {
-                regulation: { type: "string", enum: [...SIX] },
+                regulation: { type: "string", enum: [...SCOPE] },
                 article: {
                     type: "string",
                     description: "Opcjonalny numer artykulu do zawezenia.",
@@ -509,8 +518,8 @@ function handleSearch(a: Record<string, unknown>): ToolResult {
 function handleArticle(a: Record<string, unknown>): ToolResult {
     const regulation = String(a.regulation ?? "").toUpperCase().trim();
     const articleNumber = String(a.article_number ?? "").trim();
-    if (!SIX_SET.has(regulation)) {
-        return errorResult(`Regulacja '${regulation}' poza zakresem v1 (${SIX.join(", ")}).`, "out_of_scope");
+    if (!SCOPE_SET.has(regulation)) {
+        return errorResult(`Regulacja '${regulation}' poza zakresem konektora (${SCOPE.join(", ")}).`, "out_of_scope");
     }
     if (!articleNumber) return errorResult("Brak parametru 'article_number'.", "missing_arg");
 
@@ -604,13 +613,13 @@ function handleApplicability(a: Record<string, unknown>): ToolResult {
     const sector = String(a.sector ?? "").trim();
     if (!sector) return errorResult("Brak parametru 'sector'.", "missing_arg");
     const subsector = a.subsector ? String(a.subsector).trim() : null;
-    const ph = SIX.map(() => "?").join(",");
+    const ph = SCOPE.map(() => "?").join(",");
 
     let sql =
         `SELECT regulation, sector, subsector, applies, confidence, basis_article, notes
          FROM applicability_rules
          WHERE regulation IN (${ph}) AND sector = ?`;
-    const params: (string | number | null)[] = [...SIX, sector];
+    const params: (string | number | null)[] = [...SCOPE, sector];
     if (subsector) {
         sql += " AND (subsector = ? OR subsector IS NULL)";
         params.push(subsector);
@@ -632,7 +641,7 @@ function handleApplicability(a: Record<string, unknown>): ToolResult {
             content: [
                 {
                     type: "text",
-                    text: `Brak regul stosowalnosci dla sektora '${sector}'${subsector ? ` / '${subsector}'` : ""} w zakresie 6 regulacji.` + disclaimer(),
+                    text: `Brak regul stosowalnosci dla sektora '${sector}'${subsector ? ` / '${subsector}'` : ""} w zakresie 14 regulacji.` + disclaimer(),
                 },
             ],
             structuredContent: { citations: [] },
@@ -669,8 +678,8 @@ function handleApplicability(a: Record<string, unknown>): ToolResult {
 
 function handleEvidence(a: Record<string, unknown>): ToolResult {
     const regulation = String(a.regulation ?? "").toUpperCase().trim();
-    if (!SIX_SET.has(regulation)) {
-        return errorResult(`Regulacja '${regulation}' poza zakresem v1 (${SIX.join(", ")}).`, "out_of_scope");
+    if (!SCOPE_SET.has(regulation)) {
+        return errorResult(`Regulacja '${regulation}' poza zakresem konektora (${SCOPE.join(", ")}).`, "out_of_scope");
     }
     const article = a.article ? String(a.article).trim() : null;
 
@@ -771,7 +780,7 @@ async function main() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
     process.stderr.write(
-        `mcp-eu-compliance server started (stdio). Korpus snapshot ${snapshot()}, zakres: ${SIX.join(", ")}\n`,
+        `mcp-eu-compliance server started (stdio). Korpus snapshot ${snapshot()}, zakres: ${SCOPE.join(", ")}\n`,
     );
 }
 

@@ -1,5 +1,20 @@
 # Changelog - mcp-eu-compliance
 
+## v0.3.0 - 2026-07-04
+
+**Poszerzenie zakresu 6 -> 14 regulacji** (decyzja WM 2026-07-04 wzgledem zakresu v1 ADR-0022).
+Kontrakt narzedzi bez zmian; rozszerzony enum `regulation`/`regulations`.
+
+- **Nowe regulacje (klaster digital/data/cyber):** DSA, DMA, Data Act (DATA_ACT), Data Governance Act
+  (DGA), Law Enforcement Directive (LED), ePrivacy (EPRIVACY), Cybersecurity Act (CYBERSECURITY_ACT),
+  Critical Entities Resilience (CER). Dochodza do dotychczasowych GDPR, AI_ACT, DORA, NIS2, EIDAS2, CRA.
+- **Komplet 5 narzedzi dziala dla wszystkich 14** - zweryfikowane w korpusie: kazda z 8 nowych ma pelny
+  tekst (provisions), reguly stosowalnosci (applicability_rules) i artefakty dowodowe (evidence_requirements).
+  Zadne narzedzie nie zwraca pustki dla nowego zakresu.
+- **`SIX` -> `SCOPE`** (stala + typ `RegId` + `SCOPE_SET`); enumy `inputSchema` i INSTRUCTIONS zaktualizowane.
+- Dane byly juz w korpusie Ansvar (116 regulacji) - to poszerzenie filtra, nie nowy ingest.
+- Build + drift + smoke green (smoke rozszerzony o DSA).
+
 ## v0.2.2 - 2026-07-04 (working, niepublikowana - publikacja = decyzja WM)
 
 Korekta faktu o wielkosci korpusu. Backward-compatible, kontrakt 6 regulacji bez zmian.
