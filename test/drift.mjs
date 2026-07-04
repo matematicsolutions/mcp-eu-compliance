@@ -24,9 +24,10 @@ const failures = [];
 // 1. Tool names w INSTRUCTIONS musza istniec w TOOLS array
 // -----------------------------------------------------------------------------
 
-const instructionsMatch = SRC.match(/const INSTRUCTIONS = `([\s\S]*?)`;/);
+// INSTRUCTIONS jest budowany dynamicznie (funkcja buildInstructions) - licznik korpusu z db_metadata.
+const instructionsMatch = SRC.match(/function buildInstructions\(\):\s*string\s*\{\s*return `([\s\S]*?)`;/);
 if (!instructionsMatch) {
-    failures.push("Nie znaleziono const INSTRUCTIONS w src/index.ts");
+    failures.push("Nie znaleziono buildInstructions() w src/index.ts");
 } else {
     const instructions = instructionsMatch[1];
 

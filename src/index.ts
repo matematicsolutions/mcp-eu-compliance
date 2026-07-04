@@ -259,7 +259,8 @@ function toFtsMatch(query: string): string {
 // Pattern z dograh-hq/dograh v1.31.0 (BSD-2), zaadaptowany na MateMatic.
 // ---------------------------------------------------------------------------
 
-const INSTRUCTIONS = `Ten serwer MCP zwraca verbatim tekst regulacji UE z lokalnego korpusu SQLite FTS5. Zakres: GDPR, AI Act, DORA, NIS2, eIDAS 2.0, CRA (6 regulacji ICP MateMatic, ADR-0022 PATRON). Snapshot offline, zero-LLM w sciezce retrievalu - tresc grounding, nie generowana przez model.
+function buildInstructions(): string {
+    return `Ten serwer MCP zwraca verbatim tekst regulacji UE z lokalnego korpusu SQLite FTS5. Zakres: GDPR, AI Act, DORA, NIS2, eIDAS 2.0, CRA (6 regulacji ICP MateMatic, ADR-0022 PATRON). Snapshot offline, zero-LLM w sciezce retrievalu - tresc grounding, nie generowana przez model.
 
 ## Kolejnosc wywolan
 
@@ -274,7 +275,7 @@ const INSTRUCTIONS = `Ten serwer MCP zwraca verbatim tekst regulacji UE z lokaln
 
 ## Twarde ograniczenia
 
-- **Zakres twardy 6 regulacji** (GDPR, AI_ACT, DORA, NIS2, EIDAS2, CRA). Kazda inna nazwa = bledny argument. Baza zawiera 98 regulacji, ale konektor wystawia tylko te 6.
+- **Zakres twardy 6 regulacji** (GDPR, AI_ACT, DORA, NIS2, EIDAS2, CRA). Kazda inna nazwa = bledny argument. Baza (snapshot) zawiera ponad 100 regulacji (aktualnie 116, 2026-07-04; korpus rosnie), ale konektor wystawia tylko te 6.
 - **Verbatim** - tekst zwracany bez przetwarzania modelem. NIE prosc o parafraze "lepszym jezykiem" - to grounding.
 - **Snapshot, NIE zrodlo autentyczne**. Kazda odpowiedz konczy sie disclaimerem: wersja autentyczna = Dziennik Urzedowy UE. Sprawdz aktualnosc w EUR-Lex (CELEX). Swiezosc -> \`mcp-eu-sparql\` (live SPARQL).
 - **structuredContent.citations** zawsze wypelnione - regulacja, CELEX, URL EUR-Lex, snapshot. Cytuj te citations w odpowiedzi koncowej.
@@ -294,6 +295,7 @@ Tool zwraca \`isError: true\` + tekst opisujacy problem. Typowe kody bledow w tr
 - Przy porownaniach (\`eu_compare\`) uzywaj tabel.
 - Przy stosowalnosci (\`eu_check_applicability\`) ujawnij confidence (high/medium/low) i basis_article.
 - Disclaimer snapshot zawsze pozostaje w odpowiedzi (nie wycinaj).`;
+}
 
 // ---------------------------------------------------------------------------
 // Tooly
@@ -728,7 +730,7 @@ function handleEvidence(a: Record<string, unknown>): ToolResult {
 
 const server = new Server(
     { name: "mcp-eu-compliance", version: "0.2.1" },
-    { capabilities: { tools: {} }, instructions: INSTRUCTIONS },
+    { capabilities: { tools: {} }, instructions: buildInstructions() },
 );
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({

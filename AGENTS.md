@@ -15,7 +15,7 @@ Zakres v1 (ADR-0022 PATRON): **6 regulacji** - GDPR, AI Act, DORA, NIS2, eIDAS 2
 - **Kazde wywolanie narzedzia MUSI zwracac `structuredContent.citations`** z: identyfikatorem regulacji, pelna nazwa, CELEX, URL EUR-Lex, (opcjonalnie) numerem artykulu, snapshotem korpusu.
 - **Verbatim** - tekst zwracany bez przetwarzania modelem (zero-LLM). To zrodlo grounding (anti-halucynacja).
 - **Snapshot, nie zrodlo autentyczne** - kazda odpowiedz ma disclaimer: wersja autentyczna = Dziennik Urzedowy UE; weryfikacja w EUR-Lex.
-- **Zakres twardy 6 regulacji** - mimo ze baza ma 98, konektor wystawia tylko 6 (zakres v1). Filtr w `SIX`.
+- **Zakres twardy 6 regulacji** - mimo ze baza ma 116 (snapshot 2026-07-04; korpus rosnie, w bazie `db_metadata.regulations_count`), konektor wystawia tylko 6 (zakres v1). Filtr w `SIX`.
 - **Offline** - zero wywolan sieciowych w runtime. Swiezosc deleguj do mcp-eu-sparql (live).
 - **Reguly stosowalnosci to wskazowka, nie ocena prawna** (Art. 6 Konstytucji Patrona, human-in-the-loop).
 

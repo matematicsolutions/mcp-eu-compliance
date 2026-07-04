@@ -1,6 +1,6 @@
 {
   "name": "@matematicsolutions/mcp-eu-compliance",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "MCP server - offline EU compliance corpus (EUR-Lex full text via local SQLite FTS5, verbatim zero-LLM) for GDPR, AI Act, DORA, NIS2, eIDAS 2.0, CRA",
   "main": "dist/index.js",
   "scripts": {

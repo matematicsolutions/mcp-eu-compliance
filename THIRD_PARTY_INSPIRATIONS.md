@@ -25,7 +25,7 @@
 - **Czego NIE bierzemy:** kodu serwera Ansvar (kod tego konektora napisany od
   zera), hostowanego Ansvar Gateway, wstrzyknietego CTA, mapowan ISO/NIST (poza
   zakresem v1).
-- **Co zawężamy:** z 98 regulacji w bazie konektor wystawia twardo tylko 6
+- **Co zawężamy:** z 116 regulacji w bazie (snapshot 2026-07-04; korpus Ansvar rosnie - byla 98 w snapshot 05-22) konektor wystawia twardo tylko 6
   (GDPR, AI Act, DORA, NIS2, eIDAS 2.0, CRA) - zakres v1 pod ICP MateMatic.
 
 ### Snapshot licencji (naglowek Apache-2.0)

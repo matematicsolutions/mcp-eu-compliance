@@ -1,5 +1,19 @@
 # Changelog - mcp-eu-compliance
 
+## v0.2.2 - 2026-07-04 (working, niepublikowana - publikacja = decyzja WM)
+
+Korekta faktu o wielkosci korpusu. Backward-compatible, kontrakt 6 regulacji bez zmian.
+
+- **Sprostowanie liczby regulacji w INSTRUCTIONS**: „98" -> „ponad 100 (aktualnie 116, 2026-07-04;
+  korpus rosnie)". Powod: korpus Ansvar rosnie (snapshot 05-22 = 98, snapshot 2026-07-04 = **116** /
+  5 791 przepisow) - twarda liczba zastygala i wprowadzala w blad. Trzymamy sformulowanie odporne na
+  wzrost, bez odczytu przy konstrukcji serwera (INSTRUCTIONS budowane zanim `ensureCorpus()` rozwiaze
+  sciezke DB - odczyt z bazy w tym punkcie zatruwalby wspoldzielony uchwyt).
+- Sprostowanie w AGENTS.md + THIRD_PARTY_INSPIRATIONS.md (98 -> 116, z nota o rosnacym snapshocie).
+- **Filtr `SIX` bez zmian** - poszerzenie zakresu poza 6 regulacji pozostaje osobna decyzja governance
+  (ADR-0022 + bump CHANGELOG). Dane MICA/DORA-RTS/verticali finansowych sa juz w korpusie, ale
+  konektor ich nie wystawia do czasu decyzji WM.
+
 ## v0.2.0 - 2026-05-25
 
 Retrofit do kanonu MCP MateMatic (pattern z dograh-hq/dograh v1.31.0, BSD-2). Backward-compatible - istniejaci klienci dzialaja bez zmian.
