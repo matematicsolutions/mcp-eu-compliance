@@ -1,72 +1,72 @@
 # AGENTS.md - mcp-eu-compliance
 
-Plik standardu [agents.md](https://agents.md) (Linux Foundation / Agentic AI Foundation) - kanoniczne instrukcje dla agentow AI pracujacych z tym repozytorium.
+An [agents.md](https://agents.md) standard file (Linux Foundation / Agentic AI Foundation) - canonical instructions for AI agents working with this repository.
 
-## Cel projektu
+## Project purpose
 
-Serwer **MCP (Model Context Protocol)** udostepniajacy **offline korpus prawa UE** (EUR-Lex, pelny tekst) w lokalnym **SQLite FTS5**, z narzedziami zorientowanymi na compliance. **Verbatim, zero-LLM** w sciezce retrievalu - snippety zwracane bez zmian z bazy, kazdy z CELEX i URL do EUR-Lex.
+An **MCP (Model Context Protocol)** server exposing an **offline corpus of EU law** (EUR-Lex, full text) in local **SQLite FTS5**, with compliance-oriented tools. **Verbatim, zero-LLM** in the retrieval path - snippets returned unchanged from the database, each with a CELEX id and EUR-Lex URL.
 
-Zakres (ADR-0022 + poszerzenie decyzja WM 2026-07-04): **14 regulacji digital/data/cyber** - GDPR, AI Act, DORA, NIS2, eIDAS 2.0, CRA, DSA, DMA, Data Act, DGA, LED, ePrivacy, Cybersecurity Act, CER. Wszystkie 14 maja w korpusie pelny tekst + reguly stosowalnosci + artefakty dowodowe (komplet 5 narzedzi dziala).
+Scope (ADR-0022 + extension per WM decision 2026-07-04): **14 digital/data/cyber regulations** - GDPR, AI Act, DORA, NIS2, eIDAS 2.0, CRA, DSA, DMA, Data Act, DGA, LED, ePrivacy, Cybersecurity Act, CER. All 14 have full text + applicability rules + evidence artifacts in the corpus (the complete set of 5 tools works).
 
-6. konektor rodziny prawa MateMatic ([`mcp-saos`](https://github.com/matematicsolutions/mcp-saos), [`mcp-nsa`](https://github.com/matematicsolutions/mcp-nsa), [`mcp-isap`](https://github.com/matematicsolutions/mcp-isap), [`mcp-krs`](https://github.com/matematicsolutions/mcp-krs), [`mcp-eu-sparql`](https://github.com/matematicsolutions/mcp-eu-sparql), `mcp-eu-compliance` (ten)). **Komplementarny do mcp-eu-sparql**: tamten odkrywa akty na zywo (SPARQL Cellar), ten daje verbatim tekst + analize compliance offline.
+The 6th connector in the MateMatic law family ([`mcp-saos`](https://github.com/matematicsolutions/mcp-saos), [`mcp-nsa`](https://github.com/matematicsolutions/mcp-nsa), [`mcp-isap`](https://github.com/matematicsolutions/mcp-isap), [`mcp-krs`](https://github.com/matematicsolutions/mcp-krs), [`mcp-eu-sparql`](https://github.com/matematicsolutions/mcp-eu-sparql), `mcp-eu-compliance` (this one)). **Complementary to mcp-eu-sparql**: that one discovers acts live (SPARQL Cellar), this one provides verbatim text + offline compliance analysis.
 
-## Kontekst MateMatic (TWARDE OGRANICZENIA)
+## MateMatic context (HARD CONSTRAINTS)
 
-- **Kazde wywolanie narzedzia MUSI zwracac `structuredContent.citations`** z: identyfikatorem regulacji, pelna nazwa, CELEX, URL EUR-Lex, (opcjonalnie) numerem artykulu, snapshotem korpusu.
-- **Verbatim** - tekst zwracany bez przetwarzania modelem (zero-LLM). To zrodlo grounding (anti-halucynacja).
-- **Snapshot, nie zrodlo autentyczne** - kazda odpowiedz ma disclaimer: wersja autentyczna = Dziennik Urzedowy UE; weryfikacja w EUR-Lex.
-- **Zakres twardy 14 regulacji** - mimo ze baza ma 116 (snapshot 2026-07-04; korpus rosnie, w bazie `db_metadata.regulations_count`), konektor wystawia tylko 14 (zakres v1). Filtr w `SCOPE`.
-- **Offline** - zero wywolan sieciowych w runtime. Swiezosc deleguj do mcp-eu-sparql (live).
-- **Reguly stosowalnosci to wskazowka, nie ocena prawna** (Art. 6 Konstytucji Patrona, human-in-the-loop).
+- **Every tool call MUST return `structuredContent.citations`** with: regulation id, full name, CELEX, EUR-Lex URL, (optionally) article number, corpus snapshot.
+- **Verbatim** - text returned without model processing (zero-LLM). This is the grounding source (anti-hallucination).
+- **Snapshot, not the authentic source** - every response carries a disclaimer: the authentic version = Official Journal of the EU; verify in EUR-Lex.
+- **Hard scope of 14 regulations** - even though the database has 116 (snapshot 2026-07-04; the corpus grows, see `db_metadata.regulations_count`), the connector exposes only 14 (v1 scope). Filter in `SCOPE`.
+- **Offline** - zero network calls at runtime. Delegate freshness to mcp-eu-sparql (live).
+- **Applicability rules are guidance, not a legal assessment** (Art. 6 of the Patron Constitution, human-in-the-loop).
 
-## Narzedzia MCP (tools contract)
+## MCP tools (tools contract)
 
-| Tool | Parametry kluczowe | Zwraca |
+| Tool | Key parameters | Returns |
 |---|---|---|
-| `eu_search` | `query`, `regulations?`, `limit?` | snippety FTS5 verbatim + citations |
-| `eu_article` | `regulation`, `article_number` | pelny tekst artykulu + citation |
-| `eu_compare` | `query`, `regulations?` | najlepszy artykul per regulacja + citations |
-| `eu_check_applicability` | `sector`, `subsector?` | reguly stosowalnosci 14 regulacji + citations |
-| `eu_evidence` | `regulation`, `article?` | artefakty dowodowe (audit) + citation |
+| `eu_search` | `query`, `regulations?`, `limit?` | verbatim FTS5 snippets + citations |
+| `eu_article` | `regulation`, `article_number` | full article text + citation |
+| `eu_compare` | `query`, `regulations?` | best article per regulation + citations |
+| `eu_check_applicability` | `sector`, `subsector?` | applicability rules for 14 regulations + citations |
+| `eu_evidence` | `regulation`, `article?` | evidence artifacts (audit) + citation |
 
-Pelny opis: `src/index.ts` + `README.md`.
+Full description: `src/index.ts` + `README.md`.
 
-## Build i test
+## Build and test
 
 ```bash
-npm install            # Node 22.5+ (node:sqlite wbudowane, FTS5)
-npm run fetch-corpus   # pobiera regulations.db z Ansvar (Apache-2.0) do data/
+npm install            # Node 22.5+ (node:sqlite built-in, FTS5)
+npm run fetch-corpus   # downloads regulations.db from Ansvar (Apache-2.0) into data/
 npm run build          # tsc -> dist/
 npm start              # node dist/index.js
-npm run smoke          # smoke test 5 toolow przez klienta MCP
+npm run smoke          # smoke test of 5 tools via an MCP client
 ```
 
-## Zasady kodu
+## Code rules
 
 - **TypeScript strict**. `@modelcontextprotocol/sdk` ^1.12.0.
-- **`node:sqlite` wbudowane** (Node >=22.5) - zero native deps, spojne z zero-cloud. Baza otwierana read-only.
-- **Korpus poza repo** - artefakt upstream (Ansvar, Apache-2.0), pobierany skryptem. NIE commituj `data/regulations.db`.
-- **Bez polskich znakow w commit messages**.
-- **CHANGELOG bump przy zmianie kontraktu lub zakresu regulacji**.
+- **`node:sqlite` built-in** (Node >=22.5) - zero native deps, consistent with zero-cloud. Database opened read-only.
+- **Corpus outside the repo** - an upstream artifact (Ansvar, Apache-2.0), fetched by a script. Do NOT commit `data/regulations.db`.
+- **No Polish characters in commit messages.**
+- **CHANGELOG bump on any change to the contract or the regulation scope.**
 
-## Czego NIE robic (twarde reguly)
+## What NOT to do (hard rules)
 
-- **NIE rozszerzaj zakresu poza aktualne 14 regulacji** bez bumpu CHANGELOG i decyzji WM (zakres poszerzony 6->14 decyzja WM 2026-07-04 wzgledem ADR-0022; edytuj `SCOPE` + enumy + FULL_NAMES).
-- **NIE przetwarzaj tekstu modelem** w sciezce retrievalu - verbatim to cala wartosc (grounding).
-- **NIE pomijaj disclaimera snapshot** - cytowanie jako zrodlo autentyczne wprowadza w blad.
-- **NIE dodawaj mapowan ISO/NIST** (tekst normy ISO chroniony; poza zakresem v1).
-- **NIE redystrybuuj binarki korpusu w repo** - pobieranie skryptem.
+- **Do NOT extend the scope beyond the current 14 regulations** without a CHANGELOG bump and a WM decision (scope extended 6->14 per WM decision 2026-07-04 relative to ADR-0022; edit `SCOPE` + enums + FULL_NAMES).
+- **Do NOT process the text with a model** in the retrieval path - verbatim is the entire value (grounding).
+- **Do NOT omit the snapshot disclaimer** - citing it as the authentic source is misleading.
+- **Do NOT add ISO/NIST mappings** (ISO standard text is protected; out of v1 scope).
+- **Do NOT redistribute the corpus binary in the repo** - fetched by a script.
 
-## Zrodla prawdy
+## Sources of truth
 
 1. [README.md](./README.md)
-2. [THIRD_PARTY_INSPIRATIONS.md](./THIRD_PARTY_INSPIRATIONS.md) - atrybucja EUR-Lex + Ansvar
+2. [THIRD_PARTY_INSPIRATIONS.md](./THIRD_PARTY_INSPIRATIONS.md) - EUR-Lex + Ansvar attribution
 3. `src/index.ts`
-4. ADR-0022 w repo PATRON (governance/adr) - decyzja architektoniczna
-5. [EUR-Lex](https://eur-lex.europa.eu) - zrodlo upstream
+4. ADR-0022 in the PATRON repo (governance/adr) - architectural decision
+5. [EUR-Lex](https://eur-lex.europa.eu) - upstream source
 
-## Licencja
+## License
 
-**MIT** (kod) - patrz [LICENSE](./LICENSE). Korpus: Apache-2.0 (Ansvar) + EUR-Lex reusable - patrz [THIRD_PARTY_INSPIRATIONS.md](./THIRD_PARTY_INSPIRATIONS.md).
+**MIT** (code) - see [LICENSE](./LICENSE). Corpus: Apache-2.0 (Ansvar) + EUR-Lex reusable - see [THIRD_PARTY_INSPIRATIONS.md](./THIRD_PARTY_INSPIRATIONS.md).
 
-Cytowanie: *MateMatic Solutions (2026), mcp-eu-compliance - offline MCP korpus prawa UE (EUR-Lex), https://github.com/matematicsolutions/mcp-eu-compliance, MIT.*
+Citation: *MateMatic Solutions (2026), mcp-eu-compliance - offline MCP corpus of EU law (EUR-Lex), https://github.com/matematicsolutions/mcp-eu-compliance, MIT.*
