@@ -12,7 +12,9 @@
     "fetch-corpus": "node scripts/fetch-corpus.mjs",
     "smoke": "node test/smoke.mjs",
     "drift": "node test/drift.mjs",
-    "test:conformance": "node test/invalid-args.mjs"
+    "test:conformance": "node test/invalid-args.mjs",
+    "test:package": "node test/package-gate.mjs",
+    "test:package-gate": "node --test test/package-gate.test.mjs"
   },
   "keywords": [
     "mcp",

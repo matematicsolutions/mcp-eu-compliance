@@ -1,5 +1,15 @@
 # Changelog - mcp-eu-compliance
 
+## [Unreleased]
+
+Bramki przed publikacja (2026-10-13). Bez zmian w kodzie serwera i w kontrakcie narzedzi.
+
+### Added
+
+- `release.yml`: krok "Run gates before publishing" (drift, conformance, descriptor lock, bramka paczki) - do tej pory wydanie szlo `npm ci -> build -> publish` bez zadnego testu.
+- `ci.yml`: bramka paczki.
+- Bramka paczki `npm run test:package` (`npm pack --dry-run --json`; wymagane pliki wyprowadzone z `bin`/`main` + przechodnich `require`/`import` w `dist/`, pusta lista = BLOKADA; wzorzec soba-labs/krs-mcp #7) + kontrola pozytywna `npm run test:package-gate`. Mutant (usuniety `dist/index.js`) -> BLOKADA, exit 1.
+
 ## [0.4.0] - 2026-07-28
 
 ### Added
