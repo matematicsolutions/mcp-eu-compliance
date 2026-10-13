@@ -21,10 +21,23 @@ function citeCount(res) {
   return res.structuredContent?.citations?.length ?? 0;
 }
 
-async function call(name, args) {
+// Do 2026-10-13 smoke tylko DRUKOWAL wyniki i konczyl sie kodem 0 bez wzgledu na nie - zepsute
+// narzedzie przechodzilo jako "SMOKE DONE". Teraz kazde wywolanie deklaruje oczekiwanie, a kazda
+// niezgodnosc (i narzedzie z tools/list bez przypadku) daje exit 1.
+const niezgodne = [];
+const wywolane = new Set();
+
+async function call(name, args, oczekuj = { ok: true }) {
+  wywolane.add(name);
   const res = await client.callTool({ name, arguments: args });
   console.log(`\n=== ${name}(${JSON.stringify(args)}) | citations=${citeCount(res)} | isError=${!!res.isError} ===`);
   console.log(firstLines(res));
+  const tekst = res.content?.[0]?.text ?? "";
+  const zgodne = oczekuj.ok
+    ? !res.isError && citeCount(res) > 0
+    : !!res.isError && tekst.startsWith(`[${oczekuj.kod}]`);
+  console.log(zgodne ? "  PASS" : `  FAIL: oczekiwano ${oczekuj.ok ? "wyniku z citations" : `bledu [${oczekuj.kod}]`}`);
+  if (!zgodne) niezgodne.push(`${name}(${JSON.stringify(args)})`);
   return res;
 }
 
@@ -39,10 +52,19 @@ await call("eu_search", { query: "very large online platform", regulations: ["DS
 await call("eu_compare", { query: "data access rights", regulations: ["DATA_ACT", "DGA", "GDPR"] });
 await call("eu_evidence", { regulation: "DSA", article: "34" });
 
-// negatywne: regulacja poza zakresem (MICA nadal poza 14)
-await call("eu_article", { regulation: "MICA", article_number: "1" });
-// negatywne: FTS injection-ish
+// negatywne: regulacja poza zakresem (MICA nadal poza 14) - MA byc nazwany blad, nie pusty wynik
+await call("eu_article", { regulation: "MICA", article_number: "1" }, { ok: false, kod: "out_of_scope" });
+// FTS injection-ish: znaki skladni FTS w zapytaniu nie moga wywrocic wyszukiwania
 await call("eu_search", { query: "AI Act (high-risk) \"systems\"", limit: 1 });
 
 await client.close();
-console.log("\nSMOKE DONE");
+
+const bezPrzypadku = tools.tools.map((t) => t.name).filter((n) => !wywolane.has(n));
+if (!tools.tools.length) niezgodne.push("pusta lista tools/list (BLOKADA)");
+for (const n of bezPrzypadku) niezgodne.push(`${n}: brak przypadku w smoke`);
+
+if (niezgodne.length) {
+  console.log(`\nSMOKE FAIL (${niezgodne.length}):\n  - ${niezgodne.join("\n  - ")}`);
+  process.exit(1);
+}
+console.log(`\nSMOKE OK - ${wywolane.size}/${tools.tools.length} narzedzi, wszystkie oczekiwania spelnione`);

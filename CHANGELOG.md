@@ -1,8 +1,26 @@
 # Changelog - mcp-eu-compliance
 
-## [Unreleased]
+## [0.4.1] - 2026-10-13
 
-Bramki przed publikacja (2026-10-13). Bez zmian w kodzie serwera i w kontrakcie narzedzi.
+Aktualizacja zaleznosci (bezpieczenstwo), smoke z asercjami, bramki przed publikacja. Bez zmian w
+kodzie serwera i w kontrakcie narzedzi (descriptor lock: 5 narzedzi bez zmian).
+
+### Security
+
+- `npm audit`: 6 doradztw (1 krytyczne, 2 wysokie, 3 srednie; Dependabot liczyl 31 pojedynczych
+  wpisow) -> 0. Zmienione dokladnie 6 paczek, zadna nie doszla ani nie zniknela (porownanie zbiorow
+  z lockfile'a): `@modelcontextprotocol/sdk` 1.30.0 -> 1.32.1, `fast-uri` 3.1.4 -> 3.1.8, `hono`
+  4.12.32 -> 4.13.13, `ip-address` 10.3.1 -> 10.7.4, `proxy-addr` 2.0.7 -> 2.0.8, `qs` 6.15.3 -> 6.16.0.
+- Ekspozycja przed poprawka (zderzone z kodem): serwer uzywa wylacznie `StdioServerTransport`;
+  express/hono/cors/proxy-addr/qs/ip-address sa zaleznosciami SDK dla transportow HTTP, ktorych ten
+  serwer nie laduje; doradztwo SDK dotyczy KLIENTA OAuth (tu serwer); fast-uri (przez ajv) - margines.
+  Realna ekspozycja bliska zera - aktualizacja, bo tania i bez zmiany wersji glownej.
+
+### Fixed
+
+- Smoke (`npm run smoke`) tylko drukowal wyniki i konczyl sie kodem 0 bez wzgledu na nie. Teraz kazde
+  wywolanie deklaruje oczekiwanie (wynik z citations albo nazwany blad, np. `out_of_scope` dla MiCA),
+  pelny mianownik narzedzi z `tools/list`, kazda niezgodnosc = exit 1 (mutant sprawdzony: exit 1).
 
 ### Added
 

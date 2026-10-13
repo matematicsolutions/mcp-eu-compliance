@@ -808,7 +808,7 @@ function validateArgs(
 }
 
 const server = new Server(
-    { name: "mcp-eu-compliance", version: "0.4.0" },
+    { name: "mcp-eu-compliance", version: "0.4.1" },
     { capabilities: { tools: {} }, instructions: buildInstructions() },
 );
 
